@@ -9,6 +9,7 @@
 #include "csapp.h"
 
 void doit(int fd);
+void echo(int fd);
 void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *filename, char *cgiargs);
 void serve_static(int fd, char *filename, int filesize);
@@ -16,6 +17,18 @@ void get_filetype(char *filename, char *filetype);
 void serve_dynamic(int fd, char *filename, char *cgiargs);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg,
                  char *longmsg);
+
+void echo(int connfd) {
+  size_t n;
+  char buf[MAXLINE];
+  rio_t rio;
+
+  Rio_readinitb(&rio, connfd);
+  while((n = Rio_readlineb(&rio, buf, MAXLINE)) != 0) {
+    printf("%s", buf);
+    Rio_writen(connfd, buf, n);
+  }
+}
 
 void doit(int fd) {
   int is_static;
@@ -77,7 +90,7 @@ int parse_uri(char *uri, char *filename, char *cgiargs) {
     strcpy(cgiargs, "");
     strcpy(filename, ".");
     strcat(filename, uri);
-    if(uri[strlen(uri)-1] == '/')
+    if(uri[strlen(uri)-1] == '/') 
       strcat(filename, "home.html");
     return 1;
   } else {
@@ -111,10 +124,13 @@ void serve_static(int fd, char *filename, int filesize) {
 
   /* Send response body to clinet */
   srcfd = Open(filename, O_RDONLY, 0);
-  srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+  // srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0);
+  srcp = (char *)malloc(filesize);      // 11.9
+  Rio_readn(srcfd, srcp, filesize);     // 11.9
   Close(srcfd);
   Rio_writen(fd, srcp, filesize);
-  Munmap(srcp, filesize);
+  // Munmap(srcp, filesize);
+  free(srcp);                           // 11.9
 }
 
 void get_filetype(char *filename, char *filetype) {
@@ -126,6 +142,8 @@ void get_filetype(char *filename, char *filetype) {
     strcpy(filetype, "image/png");
   else if(strstr(filename, ".jpg"))
     strcpy(filetype, "image/jpeg");
+  else if(strstr(filename, ".mpeg"))
+    strcpy(filetype, "video/mpeg");
   else
     strcpy(filetype, "text/plain");
 }
@@ -179,7 +197,17 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  /*
+   * ./tiny <포트 번호>
+   * tiny 명령어를 통해 입력받은 번호의 포트를 열고 socket() -> bind() -> listen() 까지 완료한다.
+   * listen 상태에 있으면 외부의 요청이 들어올 때 수락할 수 있는 대기상태에 들어가게 된다.
+   */
   listenfd = Open_listenfd(argv[1]);
+
+  /*
+   * 무한 루프를 돌며 클라이언트의 connect 요청에 응답한다.
+   * 해당 요청에 응답 했을 경우 Close로 연결을 종료한 후 다시 accept 함수를 통해 연결이 들어오기를 기다린다.
+   */
   while (1) {
     clientlen = sizeof(clientaddr);
     connfd = Accept(listenfd, (SA *)&clientaddr,
@@ -188,6 +216,7 @@ int main(int argc, char **argv) {
                 0);
     printf("Accepted connection from (%s, %s)\n", hostname, port);
     doit(connfd);   // line:netp:tiny:doit
+    // echo(connfd); // 11.6 A
     Close(connfd);  // line:netp:tiny:close
   }
 }
