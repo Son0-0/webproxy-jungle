@@ -14,8 +14,10 @@ int main(void) {
     *p = '\0';
     strcpy(arg1, buf);
     strcpy(arg2, p+1);
-    n1 = atoi(arg1);
-    n2 = atoi(arg2);
+    // n1 = atoi(arg1);
+    // n2 = atoi(arg2);
+    sscanf(buf, "num1=%d", &n1);
+    sscanf(arg2, "num2=%d", &n2);
   }
 
   sprintf(content, "QUERY_STRING=%s", buf);
